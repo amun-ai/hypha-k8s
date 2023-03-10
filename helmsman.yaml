@@ -15,6 +15,7 @@ namespaces:
   cert-manager:
   nvidia-gpu-operator:
   ingress-nginx:
+  minio:
 
 helmRepos:
   jetstack: "https://charts.jetstack.io"
@@ -125,7 +126,7 @@ apps:
     name: "nvidia-gpu-operator"
     namespace: "nvidia-gpu-operator"
     chart: "nvidia/gpu-operator"
-    enabled: true
+    enabled: false
     version: "v1.10.1"
     group: "production"
 
@@ -139,17 +140,18 @@ apps:
     valuesFiles:
       - helmsman/ingress-nginx.yaml
 
-  # minio:
-  #   name: "minio"
-  #   namespace: "minio"
-  #   chart: "minio/minio"
-  #   group: "production"
-  #   # wait: true
-  #   enabled: false
-  #   timeout: 4800
-  #   version: "3.3.0"
-  #   valuesFiles:
-  #       - minio/values.yaml
-  #   set:
-  #     rootUser: rootuser
-  #     rootPassword: rootpass123
+  minio:
+    name: "minio"
+    priority: -10
+    namespace: "minio"
+    chart: "minio/minio"
+    group: "production"
+    # wait: true
+    enabled: false
+    timeout: 4800
+    version: "3.3.0"
+    valuesFiles:
+        - helmsman/minio.yaml
+    set:
+      rootUser: rootuser
+      rootPassword: rootpass123
