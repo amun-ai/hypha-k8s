@@ -1,0 +1,115 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+
+# Top level configuration for Triton Management Service deployment.
+# Additional configuration options are available in templates/configmap-server.yaml
+
+images:
+  # Name of Kubernetes secrets used to pull container image during pod deployment.
+  secrets:
+    - "regcred"
+
+  # Name of the container image containing TMS Server.
+  server: nvcr.io/frrkiejzzo3k/triton-management-server:0.7.0
+
+  # Name of the container image containing TMS Triton Sidecar.
+  sidecar: nvcr.io/frrkiejzzo3k/triton-management-sidecar:0.7.0
+
+  # Name of the container image containing Triton Inference Server.
+  triton: nvcr.io/nvidia/tritonserver:22.08-py3
+
+  # Name of the container image containing Mongo DB.
+  mongodb: mongo:5.0.8-focal
+
+  # Name of the container image containing TMS Rest.
+  # rest: nvcr.io/frrkiejzzo3k/triton-management-rest:0.7.0
+
+server:
+  # Setting `allowInsecure` to `true' enables TMS Sever to start without TLS PEM and key files (i.e. without support for encrypted connections).
+  # This is NOT recommended: insecure connections to the TMS Server to be intercepted, altered, or otherwise tampered with; use at your own risk.
+  allowInsecure: true
+
+  # Default duration of a lease in seconds.
+  leaseDuration: 360
+
+  # Default duration of a lease after renewal in seconds.
+  leaseRenewalDuration: 360
+
+  # Port to use to connect to TMS Server when external to the Kubernetes cluster.
+  # The range of valid external ports is 30000-32767.
+  # hint: use `kubectl get svc -A` to discover all available services.
+  # Default value, when not provided, is 30345.
+  port: 30345
+
+  # The type of connection the service provides.
+  # Valid options are ExternalName, ClusterIP, NodePort, and LoadBalancer.
+  # Default value, when not provided, is ClusterIP.
+  type: NodePort
+
+  # Configures the container-local, file-system path to the certificate-authority file.
+  # Used when establishing TLS connections with TMS client applications.
+  # Useful when a custom cluster certificate authority mounts certificates in a non-standard location.
+# tlsCaFile: /my-certs/ca.pem
+
+  # Configures the container-local, file-system path to the private-key file.
+  # Used when establishing TLS connections with TMS client applications.
+  # Useful when a custom cluster certificate authority mounts certificates in a non-standard location.
+# tlsKeyFile: /my-certs/ca.key
+
+  # Creates a custom set of annotations to be attached to the TMS Server pod.
+  # Useful when a cluster services determines which objects to affect based on a set of annotations.
+# customAnnotations:
+#   vault.hashicorp.com/agent-inject: 'true'
+#   vault.hashicorp.com/role: 'internal-app'
+
+  # Turn off autoscaling in CI because we don't have Prometheus and and the Prometheus adapter installed.
+  autoscaling:
+    enable: false
+
+sidecar:
+  # Remote model repositories used by Triton Inference Sever.
+  modelRepositories:
+    # Model repositories which provide model file downloads via web-service using HTTP GET.
+    # Downloaded model archives are assumed to be ZIP compressed, and will be expanded after download and before being loaded by Triton Inference Server.
+  https:
+  #     # Name of the Kubernetes secret to mount to Triton Inference Server.
+  #     # The secret will be provided to the web-service as a WWW-Authenticate header.
+  #     # The expected format of HTTPS secrets is a HTTP authorization header.
+  #     # Examples: `Basic $("${username}:{password}" | base64)` or `Bearer $bearer_token` or other supported format.
+  #     # See https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication for additional details about HTTP authorization headers.
+  #     # TMS mounts HTTPS secrets as volumes and expects the file name to be the same as the secret name.
+  #     # hint: use `kubectl create secret generic $secret_name --from-file=$secret_name` when creating the secret.
+     - secretName: ngc-model-pull
+  #     # URL of the remote web-sever in <domain_label_or_ip_address>/<path> format.
+       targetUri: ngc.nvidia.com
+
+# The "triton" section describes the Triton containers that are created by TMS.
+triton:
+  resources:
+    default:
+      cpu: 2
+      gpu: 1
+      memory: 4Gi
+      sharedMemory: 256Mi
+    max:
+      cpu: 2
+      gpu: 1
+      memory: 4Gi
+      sharedMemory: 256Mi
+
+rest:
+  # Port to use to connect to TMS Server when external to the Kubernetes cluster.
+  # The range of valid external ports is 30000-32767.
+  # hint: use `kubectl get svc -A` to discover all available services.
+  # Default value, when not provided, is 30045.
+  port: 30045
+
+  # The type of connection the service provides.
+  # Valid options are ExternalName, ClusterIP, NodePort, and LoadBalancer.
+  # Default value, when not provided, is ClusterIP.
+  type: NodePort

@@ -1,0 +1,222 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+
+# Top level configuration for Triton Management Service deployment.
+# Additional configuration options are available in templates/configmap-server.yaml
+
+images:
+  # Name of Kubernetes secrets used to pull container image during pod deployment.
+  secrets:
+    # - "ngc-container-pull"
+
+  # Name of the container image containing TMS Server.
+  server: nvcr.io/frrkiejzzo3k/triton-management-server:22.12
+
+  # Name of the container image containing TMS Triton Sidecar.
+  sidecar: nvcr.io/frrkiejzzo3k/triton-management-sidecar:22.12
+
+  # Name of the container image containing Triton Inference Server.
+  triton: nvcr.io/nvidia/tritonserver:22.08-py3
+
+  # Name of the container image containing Mongo DB.
+  mongodb: mongo:5.0.8-focal
+
+  # Name of the container image containing TMS Rest.
+  # rest: nvcr.io/frrkiejzzo3k/triton-management-rest:22.12
+
+server:
+  # Setting `allowInsecure` to `true' enables TMS Sever to start without TLS PEM and key files (i.e. without support for encrypted connections).
+  # This is NOT recommended: insecure connections to the TMS Server to be intercepted, altered, or otherwise tampered with; use at your own risk.
+  allowInsecure: true
+
+  # Default duration of a lease in seconds.
+  leaseDuration: 1800
+
+  # Default duration of a lease after renewal in seconds.
+  leaseRenewalDuration: 1800
+
+  # The size of time window during which a lease must have been active to be automatically renewed (when the lease is marked for auto-renewal).
+  # Value is in seconds.
+  leaseAutoRenewActivityWindow: 600
+
+  # If unspecified in the Lease Acquire Request, whether a lease should be deployed on a shared Triton server.
+  # Setting `leaseSharedTritonStatusDefault` to true instructs TMS Server to deploy a lease on a shared Triton server,
+  # unless specified otherwise in the Lease Acquire Request for the release.
+  leaseSharedTritonStatusDefault: false
+
+  # Port to use to connect to TMS Server when external to the Kubernetes cluster.
+  # The range of valid external ports is 30000-32767.
+  # hint: use `kubectl get svc -A` to discover all available services.
+  # Default value, when not provided, is 30345.
+  port: 30345
+
+  # The type of connection the service provides.
+  # Valid options are ExternalName, ClusterIP, NodePort, and LoadBalancer.
+  # Default value, when not provided, is ClusterIP.
+  type: NodePort
+
+  metrics:
+    # Setting `enabled` to `true' enables TMS Sever to expose metrics on metrics endpoint.
+    enabled: false
+
+    # The minimum visibility score required for a metric to be reported.
+    # Not used when metrics.enabled is false.
+    # Legal values are 1-3.
+    # When visibility is 1, only the most important metrics are reported.
+    # When visibility is 2, additional metrics are reported.
+    # When visibility is 3, all metrics are reported.
+    # Default value is 1.
+    # minimumVisibility: 1
+
+    # Reporting window for metrics, in seconds.
+    # Not used when metrics.enabled is false.
+    # All metrics will be reported for the most recent reporting window.
+    # Default value is 60 seconds, when no value is provided.
+    # Value must be an integer value greater than zero and not greater than 3600.
+    # reportingWindow: 60
+
+    # Port to use to get metrics of TMS Server when external to the Kubernetes cluster.
+    # The range of valid external ports is 30000-32767.
+    # hint: use `kubectl get svc -A` to discover all available services.
+    # Default value, when not provided, is 30543.
+    # Metrics are only exposed if `metrics.enabled` is set to `true`
+    # port: 30543
+
+  # Configures the container-local, file-system path to the certificate-authority file.
+  # Used when establishing TLS connections with TMS client applications.
+  # Useful when a custom cluster certificate authority mounts certificates in a non-standard location.
+  # tlsCaFile: /my-certs/ca.pem
+
+  # Configures the container-local, file-system path to the private-key file.
+  # Used when establishing TLS connections with TMS client applications.
+  # Useful when a custom cluster certificate authority mounts certificates in a non-standard location.
+  # tlsKeyFile: /my-certs/ca.key
+
+  # Creates a custom set of annotations to be attached to the TMS Server pod.
+  # Useful when a cluster services determines which objects to affect based on a set of annotations.
+  # customAnnotations:
+    # vault.hashicorp.com/agent-inject: 'true'
+    # vault.hashicorp.com/role: 'internal-app'
+
+  # Options related to autoscaling Triton pods. If this section is missing, autoscaling will be disabled.
+  autoscaling:
+    # Whether or not autoscaling is enabled.
+    # Valid values are "true" and "false".
+    # If this is not present, a default value of "false" will be used.
+    # By default, this is disabled because it requires additional components
+    # to be installed (e.g. Prometheus and the Prometheus Adapter for custom metrics).
+    # Note: If you enable this, you must uncomment the "metrics" section below and enable at least one
+    # metric on which to scale.
+    enable: false
+
+    # The maximum number of replicas an autoscaling lease is allowed to have.
+    # Must be a positive integer. Defaults to 10 if not specified.
+    # maxReplicas: 10
+
+    # The default maximum number of replicas an autoscaling lease will have if a different number is not
+    # specified when the lease is created.
+    # Must be a positive integer less than or equal to "maxReplicas". Defaults to 5 if not specified.
+    # defaultMaxReplicas: 5
+
+    # Autoscaling is controlled by the following metrics. Each one is used independently to calculate the number
+    # of target pods for a given lease. The maximum number is then selected as the target.
+    #
+    # Each metric may be enabled or disabled independently. At least one must be enabled if autoscaling is enabled.
+    # metrics:
+      # Scale based on CPU utilization. The threshold is expressed as a percentage (e.g. 75 for a utilization of 0.75).
+      # Default: 90
+      # cpuUtilization:
+        # enable: true
+        # thresholdPercent: 90
+      # Scale based on GPU compute utilization. The threshold is expressed as a percentage (e.g. 75 for a utilization of 0.75).
+      # Default: 90
+      # gpuUtilization:
+        # enable: true
+        # thresholdPercent: 90
+      # Scale based on average time inference requests spend in the queue.
+      # Values is expressed in micro seconds.
+      # Default: 10000
+      # queueTime:
+        # enable: true
+        # thresholdUs: 10000
+
+# The "triton" section describes the Triton containers that are created by TMS.
+# These should be customized based on the size of your cluster and expected workload characteristics.
+triton:
+  # "resources" describes the resources the containers get by default and the max users are allowed to request.
+  #
+  # Resources are specified as follows:
+  # cpu: Either a number of cores (e.g. 4), or a number followed by "m" (e.g. 500m), which represents milli-CPUs.
+  # gpu: number of GPUs
+  # memory: number plus units (e.g. 4GiB). Units allowed are Ki, Mi, Gi, Ti
+  # sharedMemory: number plus units (same units as memory).
+  #    Some backends (e.g. PyTorch) allow the user to use shared memory to allocate
+  #    tensors. If you plan on using this, make sure you have a non-zero value before.
+  #
+  # Note: The system enforces the following minimums:
+  #  cpu: 1
+  #  gpu: 0
+  #  memory: 256Mi
+  #  sharedMemory: 32Mi
+  #
+  # Additionally, "memory" must be at least 128Mi more than "sharedMemory".
+  resources:
+    # When a user doesn't specify the resources they want, they will get the values below.
+    default:
+      cpu: 2
+      gpu: 1
+      memory: 4Gi
+      sharedMemory: 256Mi
+    # The maximum resources a user may request.
+    max:
+      cpu: 2
+      gpu: 1
+      memory: 4Gi
+      sharedMemory: 256Mi
+
+sidecar:
+  # AWS IAM role for pulling models from S3 Bucket
+  # awsRole: arn:aws:iam::############:role/Tms-s3-role
+
+  # Remote model repositories used by Triton Inference Sever.
+  modelRepositories:
+    # Model repositories which provide model file downloads via web-service using HTTP GET.
+    # Downloaded model archives are assumed to be ZIP compressed, and will be expanded after download and before being loaded by Triton Inference Server.
+    # https:
+      # Name of the Kubernetes secret to mount to Triton Inference Server.
+      # The secret will be provided to the web-service as a WWW-Authenticate header.
+      # The expected format of HTTPS secrets is a HTTP authorization header.
+      # Examples: `Basic $("${username}:{password}" | base64)` or `Bearer $bearer_token` or other supported format.
+      # See https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication for additional details about HTTP authorization headers.
+      # TMS mounts HTTPS secrets as volumes and expects the file name to be the same as the secret name.
+      # hint: use `kubectl create secret generic $secret_name --from-file=$secret_name` when creating the secret.
+      # - secretName: ngc-model-pull
+      #   # URL of the remote web-sever in <domain_label_or_ip_address>/<path> format.
+      #   targetUri: ngc.nvidia.com
+    # persistentVolumes:
+      # TMS admin can grant any lowercase alphanumeric name (without spaces, hyphens `-` are permitted) to label this model repository
+      # - repositoryName: repo0
+      # Name of K8s persistent volume claim for the persistent volume model repository which will be mounted for Triton to load models from
+      #   volumeClaimName: repo0-claim
+    # awsBuckets:
+      # TMS admin can grant any lowercase alphanumeric name (without spaces, hyphens `-` are permitted) to label this model repository
+      #- repositoryName: repo1
+      # Name of AWS S3 bucket model repository which will be a source for Triton to load models from
+      #  bucketName: tms-models
+
+rest:
+  # Port to use to connect to TMS Server when external to the Kubernetes cluster.
+  # The range of valid external ports is 30000-32767.
+  # hint: use `kubectl get svc -A` to discover all available services.
+  # Default value, when not provided, is 30045.
+  port: 30045
+
+  # The type of connection the service provides.
+  # Valid options are ExternalName, ClusterIP, NodePort, and LoadBalancer.
+  # Default value, when not provided, is ClusterIP.
+  type: NodePort

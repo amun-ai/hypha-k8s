@@ -1,0 +1,170 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-deployment
+  namespace: {{ .Release.Namespace }}
+{{- if .Values.server }}
+  {{- with .Values.server.customAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+  labels:
+    app: tms-server
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/part-of: {{ .Chart.Name }}
+    app.kubernetes.io/version: {{ .Chart.Version | default "0.0" | quote }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  selector:
+    matchLabels:
+      app: tms-server
+      release: {{ .Release.Name }}-{{ .Chart.Version }}
+  template:
+    metadata:
+      name: {{ .Release.Name }}-server
+{{- if .Values.server }}
+  {{- with .Values.server.customAnnotations }}
+      annotations:
+    {{- toYaml . | nindent 8 }}
+  {{- end }}
+{{- end }}
+      labels:
+        app: tms-server
+        app.kubernetes.io/component: server
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: {{ .Chart.Name }}-{{ .Chart.Version }}
+        app.kubernetes.io/part-of: {{ .Chart.Name }}
+        app.kubernetes.io/version: {{ .Chart.Version | default "0.0" | quote }}
+        release: {{ .Release.Name }}-{{ .Chart.Version }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-svc-account
+      containers:
+{{- if .Values.images.rest }}
+      - name: tmr-server
+        image: {{ .Values.images.rest | quote }}
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: TMS_RESTPORT
+          value: {{ .Values.server.containerPort | default 8345 | quote }}
+        - name: TMS_CONTAINERPORT
+          value: {{ .Values.server.containerPort | default 9345 | quote }}
+        - name: TMS_TLS_ALLOWINSECURE
+          value: {{ .Values.server.allowInsecure | default false | quote }}
+  {{- if .Values.server }}{{- if .Values.server.rest }}{{- if .Values.server.rest.traceLevel }}
+        - name: TMS_TRACE
+          value: {{ .Values.server.rest.traceLevel }}
+  {{- end }}{{- end }}{{- end }}
+        ports:
+        - containerPort: {{ .Values.server.containerPort | default 8345 }}
+          name: rest
+        volumeMounts:
+        - name: configmap-volume
+          mountPath: /etc/config
+          readOnly: true
+{{- end }}
+      - name: tms-server
+        image: {{ .Values.images.server | quote }}
+        imagePullPolicy: IfNotPresent
+{{- if .Values.server }}{{- if or (eq .Values.server.allowInsecure true) (or (.Values.server.tlsCaFile) (.Values.server.tlsKeyFile)) }}
+        args:
+  {{- if eq .Values.server.allowInsecure true }}
+        - "--rpc-allow-insecure"
+  {{- end }}
+  {{- if eq .Values.server.metrics.enabled true }}
+        - "--enable-metrics"
+  {{- end }}
+  {{- if .Values.server.tlsCaFile }}
+        - "--tls-ca-file:{{ .Values.server.tlsCaFile }}"
+  {{- end }}
+  {{- if .Values.server.tlsKeyFile }}
+        - "--tls-key-file:{{ .Values.server.tlsKeyFile }}"
+  {{- end }}
+{{- end }}{{- end }}
+        env:
+        - name: TMS_K8SNAMESPACE
+          value: {{ .Release.Namespace | quote }}
+        - name: TMS_K8SRELNAME
+          value: {{ .Release.Name | quote }}
+        - name: TMS_K8SRELVERSION
+          value: {{ .Chart.Version | default "0.0" | quote }}
+        - name: TMS_SERVICEPORT
+          value: {{ .Values.server.port | default 30345 | quote }}
+{{- if .Values.server }}{{- if .Values.server.traceLevel }}
+        - name: TMS_TRACE
+          value: {{ .Values.server.traceLevel }}
+{{- end }}{{- end }}
+{{- if .Values.sidecar }}{{- if .Values.sidecar.traceLevel }}
+        - name: TMS_TSCTRACE
+          value: {{ .Values.sidecar.traceLevel }}
+{{- end }}{{- end }}
+        ports:
+        - containerPort: {{ .Values.server.containerPort | default 9345 }}
+          name: grpc
+        {{- if eq .Values.server.metrics.enabled true }}
+        - containerPort: 8543
+          name: metrics
+        {{- end }}
+        volumeMounts:
+        - name: configmap-volume
+          mountPath: /etc/config
+          readOnly: true
+      - name: mongodb
+        image: {{ .Values.images.mongodb | quote }}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 27017
+          name: mongod
+{{- if .Values.images }}{{- if .Values.images.secrets }}{{- if gt (len .Values.images.secrets) 0 }}
+      imagePullSecrets:
+  {{- range $idx, $item := .Values.images.secrets }}
+      - name: {{ $item }}
+  {{- end }}
+{{- end }}{{- end }}{{- end }}
+      volumes:
+      - name: configmap-volume
+        configMap:
+          name: {{ .Release.Name }}-configmap
+
+---
+
+# Job to clean up
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .Release.Name }}-cleanup"
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.Version | default "0.0" | quote }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+spec:
+  template:
+    metadata:
+      name: "{{ .Release.Name }}-cleanup"
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Release.Name }}-svc-account
+      containers:
+        - name: tms-cleanup
+          image: {{ .Values.images.server | quote }}
+          command: ["/opt/triton-management-service/cluster-management/complete-deployment-uninstall.sh", "{{ .Release.Name }}"]

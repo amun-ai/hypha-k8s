@@ -1,0 +1,47 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-service
+  namespace: {{ .Release.Namespace }}
+{{- if .Values.server }}
+  {{- with .Values.server.customAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+  labels:
+    app: tms-server
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/part-of: {{ .Chart.Name }}
+    app.kubernetes.io/version: {{ .Chart.Version | default "0.0" | quote }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  ports:
+    - name: tms-server-port
+      port: {{ .Values.server.port | default 30345 }}
+      targetPort: grpc
+{{- if .Values.server }}{{- if .Values.server.metrics }}{{- if eq .Values.server.metrics.enabled true }}
+    - name: tms-metrics-port
+      port: {{ .Values.server.metrics.port | default 30543 }}
+      targetPort: metrics
+{{- end }}{{- end }}{{- end }}
+{{- if .Values.images }}{{- if .Values.images.rest }}
+    - name: tmr-server-port
+      port: {{ .Values.rest.port | default 30045 }}
+      targetPort: rest
+{{- end }}{{- end }}
+  selector:
+    app: tms-server
+    release: {{ .Release.Name }}-{{ .Chart.Version }}
+  type: {{ .Values.server.type | default "ClusterIP" }}

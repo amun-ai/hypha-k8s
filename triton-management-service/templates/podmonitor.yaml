@@ -1,0 +1,35 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+
+{{- if and .Values.server (and .Values.server.autoscaling .Values.server.autoscaling.enable) }}
+kind: PodMonitor
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: {{ .Release.Name }}-triton-autoscaler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tms-triton-autoscaler
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/part-of: {{ .Chart.Name }}
+    app.kubernetes.io/version: {{ .Chart.Version | default "0.0" | quote }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: triton-inference-server
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/part-of: {{ .Chart.Name }}
+      app.kubernetes.io/name: {{ .Chart.Name }}-{{ .Chart.Version }}
+  podMetricsEndpoints:
+    - port: triton-metrics
+      path: /metrics
+{{- end}}

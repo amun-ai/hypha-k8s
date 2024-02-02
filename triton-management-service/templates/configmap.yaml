@@ -1,0 +1,164 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ .Release.Name }}-configmap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tms-service
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/part-of: {{ .Chart.Name }}
+    app.kubernetes.io/version: {{ .Chart.Version | default "0.0" | quote }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+data:
+  server.config: |
+    {
+      "lease": {
+        "initial-duration": {{ .Values.server.leaseDuration | default 1800 }},
+        "renewal-duration": {{ .Values.server.leaseRenewalDuration | default 1800 }},
+        "auto-renewal-activity-window": {{ .Values.server.leaseAutoRenewActivityWindow | default 600 }},
+        "triton-shared-status-default": {{ .Values.server.leaseSharedTritonStatusDefault | default false }}
+{{- if .Values.server.autoscaling }}
+        ,
+        "autoscaling": {
+          "enable": {{ .Values.server.autoscaling.enable | default false }},
+          "max-replicas": {{ .Values.server.autoscaling.maxReplicas | default 10 }},
+          "default-max-replicas": {{ .Values.server.autoscaling.defaultMaxReplicas | default 5 }},
+          "metrics": {
+  {{- if .Values.server.autoscaling.metrics }}
+    {{- $havePreviousAutoscalingMetric := false }}
+    {{- if .Values.server.autoscaling.metrics.cpuUtilization }}
+            "cpu-utilization": {
+              "enable": {{ .Values.server.autoscaling.metrics.cpuUtilization.enable | default false }},
+              "threshold": {{ .Values.server.autoscaling.metrics.cpuUtilization.thresholdPercent | default 90 }}
+            }
+      {{- $havePreviousAutoscalingMetric = true }}
+    {{- end }}
+    {{- if .Values.server.autoscaling.metrics.gpuUtilization }}
+      {{- if $havePreviousAutoscalingMetric }}
+            ,
+      {{- end }}
+            "gpu-utilization": {
+              "enable": {{ .Values.server.autoscaling.metrics.gpuUtilization.enable | default false }},
+              "threshold": {{ .Values.server.autoscaling.metrics.gpuUtilization.thresholdPercent | default 90 }}
+            }
+      {{- $havePreviousAutoscalingMetric = true }}
+    {{- end }}
+    {{- if .Values.server.autoscaling.metrics.queueTime }}
+      {{- if $havePreviousAutoscalingMetric }}
+            ,
+      {{- end }}
+            "queue-time": {
+              "enable": {{ .Values.server.autoscaling.metrics.queueTime.enable | default false }},
+              "threshold": {{ .Values.server.autoscaling.metrics.queueTime.thresholdUs | default 10000 }}
+            }
+      {{- $havePreviousAutoscalingMetric = true }}
+    {{- end }}
+  {{- end }}
+           }
+        }
+{{- end }}
+      },
+      "image": {
+        "pull-secrets": [
+{{- if .Values.images }}{{- if .Values.images.secrets }}
+  {{- $count := len .Values.images.secrets }}
+  {{- $count := sub $count 1 }}
+  {{- range $idx, $item := .Values.images.secrets }}
+          "{{- $item }}"{{- if lt $idx $count }},{{- end }}
+  {{- end }}
+{{- end }}{{- end }}
+        ],
+        "sidecar-image": {{ .Values.images.sidecar | quote }},
+        "triton-image": {{ .Values.images.triton | quote }}
+      },
+      "sidecar": {
+{{- if .Values.server }}
+  {{- if .Values.server.customAnnotations }}
+    {{- $count := len .Values.server.customAnnotations }}
+        "tags": {
+    {{- range $name, $value := .Values.server.customAnnotations }}
+      {{- $count := sub $count 1 }}
+          "{{- $name }}": "{{- $value }}"{{- if gt $count 0 }},{{- end }}
+    {{- end }}
+        }
+  {{- end }}
+{{- end }}
+      },
+      "triton": {
+        "resources": {
+          "default": {
+            "cpu": {{ .Values.triton.resources.default.cpu | quote }},
+            "gpu": {{ .Values.triton.resources.default.gpu }},
+            "memory": {{ .Values.triton.resources.default.memory | quote }},
+            "shared-memory": {{ .Values.triton.resources.default.sharedMemory | quote }}
+          },
+          "max": {
+            "cpu": {{ .Values.triton.resources.max.cpu | quote }},
+            "gpu": {{ .Values.triton.resources.max.gpu }},
+            "memory": {{ .Values.triton.resources.max.memory | quote }},
+            "shared-memory": {{ .Values.triton.resources.max.sharedMemory | quote }}
+          }
+        }
+      },
+      "metrics": {
+        "reporting-window": {{ .Values.server.metrics.reportingWindow | default 10 }},
+        "visibility": {{ .Values.server.metrics.minimumVisibility | default 1 }}
+      }
+    }
+
+  sidecar.config: |
+    {
+      "model-repositories": {
+        "https": [
+{{- if .Values.sidecar }}{{- if .Values.sidecar.modelRepositories }}{{- if .Values.sidecar.modelRepositories.https }}
+  {{- $count := len .Values.sidecar.modelRepositories.https }}
+  {{- $count := sub $count 1 }}
+  {{- range $idx, $item := .Values.sidecar.modelRepositories.https }}
+          {
+            "secret-name": {{- $item.secretName | quote }},
+            "target-uri": {{- $item.targetUri | quote }}
+          }{{- if lt $idx $count }},{{- end }}
+  {{- end }}
+{{- end }}{{- end }}{{- end }}
+        ],
+        "persistent-volumes": [
+{{- if .Values.sidecar }}{{- if .Values.sidecar.modelRepositories }}{{- if .Values.sidecar.modelRepositories.persistentVolumes }}
+{{- $count := len .Values.sidecar.modelRepositories.persistentVolumes }}
+{{- $count := sub $count 1 }}
+{{- range $idx, $item := .Values.sidecar.modelRepositories.persistentVolumes }}
+        {
+          "repository-name": {{- $item.repositoryName | quote }},
+          "volume-claim-name": {{- $item.volumeClaimName | quote }}
+        }{{- if lt $idx $count }},{{- end }}
+{{- end }}
+{{- end }}{{- end }}{{- end }}
+        ],
+        "aws-buckets": [
+{{- if .Values.sidecar }}{{- if .Values.sidecar.modelRepositories }}{{- if .Values.sidecar.modelRepositories.awsBuckets }}
+{{- $count := len .Values.sidecar.modelRepositories.awsBuckets }}
+{{- $count := sub $count 1 }}
+{{- range $idx, $item := .Values.sidecar.modelRepositories.awsBuckets }}
+        {
+          "repository-name": {{- $item.repositoryName | quote }},
+          "bucket-name": {{- $item.bucketName | quote }}
+        }{{- if lt $idx $count }},{{- end }}
+{{- end }}
+{{- end }}{{- end }}{{- end }}
+        ]
+      },
+      "metrics": {
+        "reporting-window": {{ .Values.server.metrics.reportingWindow | default 10 }},
+        "visibility": {{ .Values.server.metrics.minimumVisibility | default 1 }}
+      }
+    }
