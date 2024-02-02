@@ -1,0 +1,53 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.              *
+*                                                                            *
+* NVIDIA CORPORATION and its licensors retain all intellectual property      *
+* and proprietary rights in and to this software, related documentation      *
+* and any modifications thereto.  Any use, reproduction, disclosure or       *
+* distribution of this software and related documentation without an express *
+* license agreement from NVIDIA CORPORATION is strictly prohibited.          *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+syntax = "proto3";
+
+package triton.management.server;
+
+option csharp_namespace = "Triton.Management.Grpc";
+option go_package = "triton.management.grpc";
+option java_package = "com.triton.management.grpc";
+
+import public "proto/common.proto";
+
+enum LeaseEventType {
+  // The event, or the type of the even, is unknown.
+  LEASE_EVENT_TYPE_UNKNOWN = 0;
+
+  // The event contains information related to a change in state/status of the lease.
+  LEASE_EVENT_TYPE_STATUS = 1;
+
+  // The event contains information related non-error warning.
+  LEASE_EVENT_TYPE_WARNING = 2;
+
+  // The event contains information related to a  non-fatal error.
+  LEASE_EVENT_TYPE_ERROR = 3;
+
+  // The event contains information related to how the lease failed.
+  LEASE_EVENT_TYPE_FAILURE = 4;
+}
+
+message LeaseEvent {
+  // Details about the event.
+  // Maximum allowed size is 524288 bytes (512 KiB).
+  string message = 1;
+
+  // Source of the event.
+  // Common sources: triton-server, triton-sidecar, kubernetes.
+  // Maximum allowed size is 16384 bytes (16 KiB).
+  string source = 2;
+
+  // Timestamp of when the event was recorded.
+  Timestamp timestamp = 3;
+
+  // Type of the event.
+  LeaseEventType type = 4;
+}

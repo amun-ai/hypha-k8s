@@ -1,0 +1,466 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* Copyright (c) 2022-2023, NVIDIA CORPORATION.  All rights reserved.         *
+*                                                                            *
+* NVIDIA CORPORATION and its licensors retain all intellectual property      *
+* and proprietary rights in and to this software, related documentation      *
+* and any modifications thereto.  Any use, reproduction, disclosure or       *
+* distribution of this software and related documentation without an express *
+* license agreement from NVIDIA CORPORATION is strictly prohibited.          *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+syntax = "proto3";
+
+package triton.management.server;
+
+option csharp_namespace = "Triton.Management.Grpc";
+option go_package = "triton.management.grpc";
+option java_package = "com.triton.management.grpc";
+
+import public "proto/common.proto";
+import public "proto/model-state.proto";
+import public "proto/Tms/lease-event.proto";
+
+service Lease {
+  // Requests the URN of a Triton Inference Server (TIS) with the requested set of models loaded and available.
+  // Lease state changes are streamed to the requester until all models are ready or are impossible to make ready.
+  // Requested model set maximum count of 128 models; requests which exceed this limit will result in an error.
+  // Requested models must include their TIS name and version, as well as the URN where the model can be acquired.
+  rpc Acquire(LeaseAcquireRequest) returns (stream LeaseAcquireResponse);
+
+  // Requests a list of leases from the server.
+  rpc List(LeaseListRequest) returns (stream LeaseStatusResponse);
+
+  // Requests the release of an acquired lease.
+  // Once released, the system may unload the model(s) so long as no other lease exists of the model(s).
+  rpc Release(LeaseReleaseRequest) returns (LeaseReleaseResponse);
+
+  // Requests the renewal of a lease.
+  // Lease renewals must happen prior to an existing lease expiring.
+  // Attempting to renew an expired lease will result in an error.
+  rpc Renew(LeaseRenewRequest) returns (LeaseRenewResponse);
+
+  // Requests the status of a lease.
+  rpc Status(LeaseStatusRequest) returns (LeaseStatusResponse);
+}
+
+message ModelDescriptor {
+  // Name of the model.
+  // Use this name with Triton Client to interact with the model.
+  // Maximum allowed size of 255 bytes.
+  string model_name = 1;
+
+  // URN used to request the model from an external model-repository.
+  // Maximum allowed size of 4096 bytes.
+  string model_urn = 2;
+
+  // The number of instances of the model that were requested.
+  // A value of 0 means the model's default specification was used.
+  // Actual model configuration information must be retrieved from Triton via its Model Configuration Extension
+  // (https://github.com/triton-inference-server/server/blob/main/docs/protocol/extension_model_configuration.md).
+  int32 instance_count = 6;
+
+  // Current state of the requested model.
+  ModelState model_state = 3;
+
+  // List of available model versions.
+  // Maximum allowed number of versions of 64.
+  // Maximum allowed size of a model version of 512 bytes.
+  repeated string model_versions = 4;
+
+  // Model backend as reported by Triton.
+  // Maximum allowed size of 512 bytes.
+  string model_backend = 5;
+}
+
+enum LeaseState {
+  // The lease is unknown or is in an unknown state.
+  LEASE_STATE_UNKNOWN = 0;
+
+  // The lease is being processed, and not yet ready.
+  // The lease is valid, but one or more model is unavailable.
+  LEASE_STATE_PENDING = 1;
+
+  // The lease is valid and all models are available.
+  LEASE_STATE_VALID = 2;
+
+  // The lease has been released.
+  // The lease is no longer valid, and all models are unavailable.
+  LEASE_STATE_RELEASED = 3;
+
+  // The lease has expired without being renewed.
+  // The lease is no longer valid, and all models are unavailable.
+  LEASE_STATE_EXPIRED = 4;
+
+  // An error occurred during an attempt to load a model.
+  // The lease is invalid, and all models are unavailable.
+  // See individual model states for error details.
+  LEASE_STATE_ERROR = 5;
+}
+
+// Whether a client would like to deploy a lease on a shared Triton server.
+enum SharedTriton {
+  // The value is not specified. Use the server's default value.
+  SHARED_TRITON_UNSPECIFIED = 0;
+
+  // The lease should not be deployed on a shared Triton server.
+  SHARED_TRITON_FALSE = 1;
+
+  // The lease can be deployed on a shared Triton server.
+  SHARED_TRITON_TRUE = 2;
+}
+
+message LeaseAcquireRequest {
+  message ModelRequest {
+    // URN used to request the model from an external mode-repository.
+    // Used by Triton Sidecar to acquire the model from an external model repository.
+    // This value must be unique per `LeaseAcquireRequest` otherwise an error will be returned.
+    // Maximum allowed size of 4096 bytes.
+    string model_urn = 1;
+
+    // Name of the model.
+    // Used to identify the model when interacting with Triton Inference Server.
+    // This value must be unique per `LeaseAcquireRequest` otherwise an error will be returned.
+    // Maximum allowed size of 255 bytes.
+    string model_name = 2;
+
+    // The number of instances of the model that should be loaded.
+    // Set to 0 to leave unspecified.
+    // If the model already has a configuration file, this value will be ignored.
+    int32 model_instance_count = 3;
+  }
+
+  // Standard RPC request header.
+  RequestHeader header = 1;
+
+  // Set of requested models.
+  // Maximum allowed model count of 256.
+  repeated ModelRequest models = 2;
+
+  // This is an optional field.
+  // Container image of the Triton Inference Server container on which the requested model(s) will be loaded.
+  // Image should be provided in "image:tag" format.
+  // Maximum allowed size is 2048 bytes.
+  string triton_image = 3;
+
+  // Options to control the duration of the lease. If not set, the server-configured defaults will be used.
+  DurationOptions duration_options = 4;
+
+  // Whether a lease should be deployed on a shared Triton server.
+  // The server will will decide whether to honor this request and will respond by setting the "shared_triton" flag in the response.
+  SharedTriton shared = 5;
+
+  // The resources requested for the Triton pod. If unset, defaults for the cluster will be used.
+  // In addition to being less than the system-configured maximum values allowed, the resource requests must
+  // respect the following rules. If a value is not set, the rule refers to the system-configured default instead:
+  //  - cpu_milli >= 1000
+  //  - gpu >= 0
+  //  - memory_bytes >= 256 MiB
+  //  - shared_memory_bytes >= 32 MiB
+  //  - memory_bytes - shared_memory_bytes >= 128 MiB
+  //
+  // The constraints above may change at a future date, depending on the resource requirements of Triton.
+  ContainerResourceRequests triton_resource_requests = 6;
+
+  // Options related to autoscaling the lease. If not set, autoscaling will be disabled for this lease.
+  AutoscalingOptions autoscaling_options = 7;
+}
+
+// Describes resources requested for a container. All the fields as optional. When a field is not set,
+// a system-configured default value will be used.
+//
+// Depending on the context where this is used, additional restraints may be placed on individual fields.
+message ContainerResourceRequests {
+  // The number of CPUs for the container, in units of milli-CPUs. Must be non-negative.
+  optional int32 cpu_milli = 1;
+
+  // The number of GPUs for the container. Must be non-negative.
+  optional int32 gpu = 2;
+
+  // The amount of memory for the container, in bytes. Must be positive. If it is too small for the type of
+  // container being loaded, you may get difficult-to-diagnose errors.
+  optional int64 memory_bytes = 3;
+
+  // The amount of shared memory, in bytes. Must be non-negative. Must be less than memory_bytes (or less than the
+  // system-configured default amount of memory). For some uses, it may have to be a specified amount smaller than
+  // memory_bytes (or the system-configured default amount of memory).
+  optional int64 shared_memory_bytes = 4;
+}
+
+// Describes the parameters used for autoscaling leases.
+//
+// By default, all of the metrics on which to scale will use server-configured values.
+// These can be overriden on a per-lease basis using the fields that begin with "metric_"
+// (e.g. "metric_gpu utilization).
+message AutoscalingOptions {
+  // Metrics may be in any of the given states.
+  enum MetricState {
+    // The default, server-configured value will e used.
+    METRIC_STATE_UNSPECIFIED = 0;
+
+    // The metric will be enabled.
+    METRIC_STATE_ENABLED = 1;
+
+    // The metric will be disabled.
+    METRIC_STATE_DISABLED = 2;
+  }
+
+  // Description of a metric on which to scale.
+  message Metric {
+    // The state of the metric.
+    MetricState state = 1;
+
+    // The value of the threshold. If unset and the metric is enabled, the server-configured default will be used.
+    optional int32 threshold = 2;
+  }
+
+  // Whether to enable autoscaling. If set to false, the rest of the options are ignored.
+  bool enable = 1;
+
+  // The maximum number of replicas.
+  // Values that are negative or greater than the system-configured maximum will result in an error.
+  // An unspecified values means that the server should use the system-configured maximum number of replicas.
+  optional int32 max_replicas = 2;
+
+  // The minimum number of replicas.
+  // Values that are negative or outside the range of the system-configured limits result in an error.
+  // An unspecified values means that the server should use the system-configured minimum number of replicas.
+  optional int32 min_replicas = 3;
+
+  // Scaling based on GPU utilization. The threshold is a percentage.
+  Metric metric_gpu_utilization_percent = 4;
+
+  // Scaling based on CPU utilization. The threshold is a percentage.
+  Metric metric_cpu_utilization_percent = 5;
+
+  // Scaling based on queue time for inference requests. The threshold is a the time in microseconds.
+  Metric metric_queue_time_usec = 6;
+}
+
+// Describes the parameters used to control the lifespan of a lease.
+// The server-configured defaults will be used for any optional values which are missing.
+message DurationOptions {
+  // The initial duration of the lease.
+  optional Duration initial_duration = 1;
+
+  // The duration of the lease when it is renewed.
+  optional Duration renewal_duration = 2;
+
+  // Whether automatic renewal should be enabled for the lease.
+  // The server will will decide whether to honor this request and will respond by setting the "auto_renew" flag in the response.
+  optional bool auto_renew = 3;
+
+  // The window of time during which the lease will be considered active for automatic renewal purposes.
+  // For example, a value of five minutes would mean that if a lease had been used in the five minutes before when
+  // it would expire, and automatic renewal is enabled for the lease, the lease would be renewed instead of expired.
+  optional Duration auto_renew_activity_window = 4;
+}
+
+message LeaseAcquireResponse {
+  // Standard RPC response header.
+  ResponseHeader header = 1;
+
+  // Unique identifier of the lease.
+  // Size must be 16 bytes.
+  bytes lease_id = 2;
+
+  Timestamp requested_timestamp = 12;
+
+  // The state of the requested lease.
+  LeaseState lease_state = 3;
+
+  // URN of the Triton Inference Server instance which has the requested model(s) loaded.
+  // Use this URN for Triton Client to use when interacting with the model(s).
+  // Maximum allowed size of 4096 bytes.
+  string triton_urn = 4;
+
+  // Timestamp of when the current lease expires.
+  // The lease should be renewed before it expires if the model(s) are required after the current lease expires.
+  // Timestamp values are provided as UTC (+0:00).
+  Timestamp expires = 5;
+
+  // Current state of the requested models.
+  // Maximum count returned of 256 models.
+  repeated ModelDescriptor models = 6;
+
+  // Container image of the Triton Inference Server container on which models requested in the lease are loaded.
+  // Image is provided in "image:tag" format.
+  // Maximum allowed size is 2048 bytes.
+  string triton_image = 7;
+
+  // Whether the lease is deployed on a shared Triton server.
+  bool shared_triton = 8;
+
+  // Contains status information related to autoscaling.
+  AutoscalingStatus autoscaling_status = 9;
+
+  // Details about the lease's duration.
+  DurationStatus duration_status = 10;
+
+  // List of events related to the acquisition of the lease.
+  // Maximum number of reported events is 64.
+  repeated LeaseEvent events = 11;
+}
+
+message LeaseListRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+}
+
+message LeaseReleaseRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+
+  // Unique identifier of an acquired or promised lease.
+  // Once released, a lease is no longer valid and should not be used to interact with the model.
+  // Size must be 16 bytes.
+  bytes lease_id = 2;
+}
+
+message LeaseReleaseResponse {
+  // Standard RPC response header.
+  ResponseHeader header = 1;
+
+  // The current state of the model-lease after release.
+  LeaseState state = 2;
+}
+
+message LeaseRenewRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+
+  // Unique identifier of a previously acquired lease.
+  // Size must be 16 bytes.
+  bytes lease_id = 2;
+}
+
+message LeaseRenewResponse {
+  // Standard RPC response header.
+  ResponseHeader header = 1;
+
+  // The current state of the model-lease.
+  LeaseState state = 2;
+
+  // Timestamp of when the renewed lease expires.
+  Timestamp expires = 3;
+}
+
+message LeaseStatusRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+
+  // Unique identifier of the lease status is requested of.
+  // Size must be 16 bytes.
+  bytes lease_id = 2;
+}
+
+message LeaseStatusResponse {
+  message RenewalDetails {
+    // The display name of the user which requested the lease renewal.
+    // Maximum size of 1024 bytes.
+    string user_name = 1;
+
+    // The timestamp of when the renewal request was processed.
+    Timestamp timestamp = 2;
+  }
+
+  // Standard RPC request header.
+  ResponseHeader header = 1;
+
+  // Unique identifier of the lease.
+  // Size must be 16 bytes.
+  bytes lease_id = 2;
+
+  // State of the requested lease.
+  LeaseState lease_state = 3;
+
+  // Timestamp of when the lease was initially requested.
+  // Useful for comparing to lease-event timestamps to determine age of the event relative to the lease.
+  Timestamp requested_timestamp = 13;
+
+  // Timestamp of when the lease became ready.
+  // Not provided when a lease was never made ready (state == valid).
+  optional Timestamp ready_timestamp = 14;
+
+  // URN of the Triton Inference Server deployment which has the requested model(s) loaded.
+  // Use this URN for Triton Client to use when interacting with the model(s).
+  // Maximum allowed size of 2048 bytes.
+  string triton_urn = 4;
+
+  // Timestamp of when the lease expires.
+  // The lease should be renewed before it expires if the model(s) are required after the current lease expires.
+  // Timestamp values are provided as UTC (+0:00).
+  Timestamp expires = 5;
+
+  // List of models associated with the lease.
+  // Maximum count returned of 256 models.
+  repeated ModelDescriptor models = 6;
+
+  // List of most recent lease renewals.
+  // Maximum count returned of 32 renewals.
+  repeated RenewalDetails renewals = 7;
+
+  // Container image of the Triton Inference Server container on which models requested in the lease are loaded.
+  // Image is provided in "image:tag" format.
+  // Maximum allowed size is 2048 bytes.
+  string triton_image = 8;
+
+  // Information about the lease's duration.
+  DurationStatus duration_status = 9;
+
+  // Whether the lease is deployed on a shared Triton server instance.
+  bool shared_triton = 10;
+
+  // Contains status information related to autoscaling.
+  AutoscalingStatus autoscaling_status = 11;
+
+  // List of events, usually status updates, related to the lifecycle of the lease.
+  // Maximum number of reported events is 64.
+  repeated LeaseEvent events = 12;
+}
+
+// Describes the status of a lease as it relates to autoscaling.
+message AutoscalingStatus {
+  // Describes an autoscaling metric.
+  message Metric {
+    // Whether the metric is enabled.
+    bool enabled = 1;
+
+    // The threshold for scaling on this metric. If the metric is disabled, this value has no meaning.
+    int32 threshold = 2;
+  }
+
+  // Whether autoscaling is enabled for the lease.
+  // If autoscaling is disabled, the values of the other fields is unspecified.
+  bool enabled = 1;
+
+  // The maximum number of replicas allowed for this lease.
+  int32 max_replicas = 2;
+
+  // The minimum number of replicas allowed for this lease.
+  int32 min_replicas = 3;
+
+  // Scaling based on GPU utilization. The threshold is a percentage.
+  Metric metric_gpu_utilization_percent = 4;
+
+  // Scaling based on CPU utilization. The threshold is a percentage.
+  Metric metric_cpu_utilization_percent = 5;
+
+  // Scaling based on queue time for inference requests. The threshold is a the time in microseconds.
+  Metric metric_queue_time_usec = 6;
+}
+
+// Describes the status of a lease's values related to its duration
+message DurationStatus {
+  // Whether automatic renewal is enabled for the lease.
+  bool auto_renew = 1;
+
+  // The size of the look-back window for seeing whether the lease has recently been used for auto-renew purposes.
+  Duration auto_renew_activity_window = 2;
+
+  // The initial duration of the lease.
+  Duration initial_duration = 3;
+
+  // For how much time the lease will be renewed if/when it is renewed.
+  Duration renewal_duration = 4;
+
+}

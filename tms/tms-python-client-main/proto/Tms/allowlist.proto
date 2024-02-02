@@ -1,0 +1,135 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.              *
+*                                                                            *
+* NVIDIA CORPORATION and its licensors retain all intellectual property      *
+* and proprietary rights in and to this software, related documentation      *
+* and any modifications thereto.  Any use, reproduction, disclosure or       *
+* distribution of this software and related documentation without an express *
+* license agreement from NVIDIA CORPORATION is strictly prohibited.          *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+syntax = "proto3";
+
+package triton.management.server;
+
+option csharp_namespace = "Triton.Management.Grpc";
+option go_package = "triton.management.grpc";
+option java_package = "com.triton.management.grpc";
+
+import public "proto/common.proto";
+import public "proto/model-state.proto";
+
+service TritonAllowlist {
+  // Append one or more values to the list of allowed to deploy container images.
+  // When no images are provided an error will be returned.
+  rpc Append(TritonAllowlistAppendRequest) returns (TritonAllowlistAppendResponse);
+
+  // Lists all container images contained in the list of allowed to deploy container images
+  rpc List(TritonAllowlistListRequest) returns (stream TritonAllowlistListResponse);
+
+  // Removes one or more values from the list of allowed to deploy container images.
+  // When no images are provided an error will be returned.
+  rpc Remove(TritonAllowlistRemoveRequest) returns (TritonAllowlistRemoveResponse);
+}
+
+enum TritonAllowlistChangeResult {
+  // The result from a change has left the Allowlist in an unknown state
+  ALLOWLIST_CHANGE_RESULT_UNKNOWN = 0;
+
+  // The expected result of a change was successful
+  // The Allowlist is in the expected state
+  ALLOWLIST_CHANGE_RESULT_SUCCESS = 1;
+
+  // A duplicate request for a change to the Allowlist was submitted
+  // The Allowlist is already in the expected state
+  ALLOWLIST_CHANGE_RESULT_DUPLICATE = 2;
+
+  // Applicable for append requests when an Allowlist entry is already present for a Triton image
+  // A duplicate entry will not be created in the Allowlist
+  ALLOWLIST_CHANGE_RESULT_ALREADY_PRESENT = 3;
+
+  // Applicable for remove requests when an Allowlist entry is not present for a Triton image
+  // There is no entry to remove from the Allowlist
+  ALLOWLIST_CHANGE_RESULT_NOT_PRESENT = 4;
+}
+
+message TritonAllowlistAppendRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+
+  // List of Triton Inference Server container image URN to append to the allow-list.
+  // Values should be provided in "image:tag" format.
+  // Allowlist image URN values are case insensitive.
+  // Maximum allowed size is 2048 bytes per value.
+  // Maximum number of values allowed is 256.
+  repeated string triton_images = 2;
+}
+
+message TritonAllowlistAppendResponse {
+  message AppendResult {
+    // Triton Inference Server container image URN to append to the allow-list.
+    // Value should be provided in "image:tag" format.
+    // Allowlist image URN values are case insensitive.
+    // Maximum allowed size is 2048 bytes per value.
+    string triton_image = 1;
+
+    // Result of the append operation.
+    TritonAllowlistChangeResult result = 2;
+  }
+
+  // Standard RPC response header.
+  ResponseHeader header = 1;
+
+  // Results of the Append request.
+  // Maximum number of values allowed is 256.
+  repeated AppendResult results = 2;
+}
+
+message TritonAllowlistListRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+}
+
+message TritonAllowlistListResponse {
+  // Standard RPC response header.
+  ResponseHeader header = 1;
+
+  // Triton Inference Server container image URN which can be use when acquiring a lease.
+  // Values will be provided in "image:tag" format.
+  // Allowlist image URN values are case insensitive.
+  // Maximum allowed size is 2048 bytes per value.
+  // Maximum number of values allowed is 1024.
+  string triton_image = 2;
+}
+
+message TritonAllowlistRemoveRequest {
+  // Standard RPC request header.
+  RequestHeader header = 1;
+
+  // List of Triton Inference Server container image URN to remove from the allow-list.
+  // Values should be provided in "image:tag" format.
+  // Allowlist image URN values are case insensitive.
+  // Maximum allowed size is 2048 bytes per value.
+  // Maximum number of values allowed is 256.
+  repeated string triton_images = 2;
+}
+
+message TritonAllowlistRemoveResponse {
+  message RemoveResult {
+    // Triton Inference Server container image URN to remove from the allow-list.
+    // Value should be provided in "image:tag" format.
+    // Allowlist image URN values are case insensitive.
+    // Maximum allowed size is 2048 bytes per value.
+    string triton_image = 1;
+
+    // Result of the remove operation.
+    TritonAllowlistChangeResult result = 2;
+  }
+
+  // Standard RPC response header.
+  ResponseHeader header = 1;
+
+  // Results of the Remove request.
+  // Maximum number of values allowed is 256.
+  repeated RemoveResult results = 2;
+}

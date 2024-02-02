@@ -1,0 +1,64 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.              *
+*                                                                            *
+* NVIDIA CORPORATION and its licensors retain all intellectual property      *
+* and proprietary rights in and to this software, related documentation      *
+* and any modifications thereto.  Any use, reproduction, disclosure or       *
+* distribution of this software and related documentation without an express *
+* license agreement from NVIDIA CORPORATION is strictly prohibited.          *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+syntax = "proto3";
+
+package triton.management;
+
+option csharp_namespace = "Triton.Management.Grpc";
+option go_package = "triton.management.grpc";
+option java_package = "com.triton.management.grpc";
+
+enum ModelState {
+  // The model state is unknown or in an unknown state.
+  MODEL_STATE_UNKNOWN = 0;
+
+  // The model is pending processing.
+  // The model is not available for use.
+  MODEL_STATE_PENDING = 1;
+
+  // The model is in the process of being acquired from the remote repository.
+  // The model is not available for use.
+  MODEL_STATE_FETCHING = 2;
+
+  // The model is in the local model cache.
+  // The model is not available for use.
+  MODEL_STATE_CACHED = 3;
+
+  // The model is being loaded by Triton.
+  // The model is not available for use.
+  MODEL_STATE_LOADING = 4;
+
+  // The model model has been successfully loaded by Triton.
+  // The model is available for use.
+  MODEL_STATE_READY = 5;
+
+  // The model is being unloaded by Triton.
+  // THe model is not available for use.
+  MODEL_STATE_UNLOADING = 6;
+
+  // The model has been removed from the local cache.
+  // The model is not available for use.
+  MODEL_STATE_REMOVED = 7;
+
+  // The model could not be acquired from the remote repository.
+  // The model was unknown or unavailable.
+  // The model is not available for use.
+  MODEL_STATE_UNAVAILABLE = 8;
+
+  // The model could not be acquired from the model-repository.
+  // Triton has insufficient privileges to acquire the model.
+  // The model is not available for use.
+  MODEL_STATE_INACCESSIBLE = 9;
+
+  // The acquired model is invalid and cannot be loaded by Triton.
+  // The model is not available for use.
+  MODEL_STATE_INVALID = 10;
+}

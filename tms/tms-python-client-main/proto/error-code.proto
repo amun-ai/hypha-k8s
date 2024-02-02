@@ -1,0 +1,55 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.              *
+*                                                                            *
+* NVIDIA CORPORATION and its licensors retain all intellectual property      *
+* and proprietary rights in and to this software, related documentation      *
+* and any modifications thereto.  Any use, reproduction, disclosure or       *
+* distribution of this software and related documentation without an express *
+* license agreement from NVIDIA CORPORATION is strictly prohibited.          *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+syntax  = "proto3";
+
+package triton.management;
+
+option csharp_namespace = "Triton.Management.Grpc";
+option go_package = "triton.management.grpc";
+option java_package = "com.triton.management.grpc";
+
+enum ErrorCode {
+    // Request was successful.
+    SUCCESS = 0;
+
+    // Request was malformed, or otherwise invalid.
+    ERROR_BAD_REQUEST = 1;
+    // Request authorization was malformed.
+    ERROR_AUTHORIZATION_INVALID = 2;
+    // Request user-agent was malformed.
+    ERROR_USER_AGENT_INVALID = 3;
+    // Requested api-version was malformed.
+    ERROR_VERSION_INVALID = 4;
+    // Requested api-version is unsupported.
+    ERROR_VERSION_UNSUPPORTED = 5;
+
+    // General authentication error occurred.
+    ERROR_AUTHENTICATION = 1001;
+    // Request is unauthorized.
+    ERROR_UNAUTHORIZED = 1002;
+    // User lacks sufficient privileges.
+    ERROR_UNPRIVILEGED = 1003;
+
+    // Authority is unavailable.
+    ERROR_AUTHORITY_UNAVAILABLE = 2001;
+    // Kubernetes is unavailable.
+    ERROR_CLUSTER_UNAVAILABLE = 2002;
+    // Database is unavailable.
+    ERROR_DATABASE_UNAVAILABLE = 2003;
+    // Network is unavailable.
+    ERROR_NETWORK_UNAVAILABLE = 2004;
+    // Storage is unavailable or exhausted.
+    ERROR_STORAGE_UNAVAILABLE = 2005;
+    // Request timed out.
+    ERROR_REQUEST_TIMED_OUT = 2006;
+    // General internal error occurred.
+    ERROR_UNHANDLED = 2007;
+}

@@ -1,0 +1,87 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* Copyright (c) 2021-2023, NVIDIA CORPORATION.  All rights reserved.         *
+*                                                                            *
+* NVIDIA CORPORATION and its licensors retain all intellectual property      *
+* and proprietary rights in and to this software, related documentation      *
+* and any modifications thereto.  Any use, reproduction, disclosure or       *
+* distribution of this software and related documentation without an express *
+* license agreement from NVIDIA CORPORATION is strictly prohibited.          *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+syntax  = "proto3";
+
+package triton.management;
+
+option csharp_namespace = "Triton.Management.Grpc";
+option go_package = "triton.management.grpc";
+option java_package = "com.triton.management.grpc";
+
+import public "proto/error-code.proto";
+
+// Version information structure.
+// Based on semantic version specification (https://semver.org/)
+message Version {
+  // Version for incompatible API changes.
+  int32 major = 1;
+
+  // Version for added functionality in a backwards compatible manner.
+  int32 minor = 2;
+
+  // Version for backwards compatible bug fixes.
+  int32 patch = 3;
+
+  // Additional labels for pre-release and build metadata are available as extensions to the MAJOR.MINOR.PATCH format.
+  // Maximum allowed size of 128 bytes.
+  string label = 4;
+}
+
+// Standard header expected to be attached to all requests.
+message RequestHeader {
+  // Version of the API expected to handle the request.
+  Version api_version = 1;
+
+  // Name of the agent interacting with the server.
+  // Maximum allowed size of 512 bytes.
+  string user_agent = 2;
+
+  // Authentication header for the request.
+  // Maximum allowed size is 14360576 bytes (1 MiB).
+  string authentication = 3;
+}
+
+// Return value of most API calls, specifies success or failure.
+message ResponseHeader {
+  // Version of the API which handled the request.
+  Version api_version = 1;
+
+  // The name / identifier of the server.
+  // Maximum allowed size of 512 bytes.
+  string server = 2;
+
+  // The response or "error" code of the request.
+  // Zero (0) indicates the request was successful.
+  ErrorCode code = 3;
+
+  // When returned, URI the client can use to authenticate itself.
+  string authenticate_uri = 4;
+
+  // Progress message(s).
+  // Maximum allowed size is 262144 bytes (256 KiB) per message, and 2097152 bytes (2 MiB) total.
+  repeated string messages = 6;
+
+  // Fatal error message(s) just before the stream aborts.
+  // Maximum allowed size is 262144 bytes (256 KiB) per message, and 2097152 bytes (2 MiB) total.
+  repeated string errors = 7;
+}
+
+// Represents a date & time relative to start of the common era in Universal Coordinated Time (UTC).
+message Timestamp {
+  // The number of milliseconds before or after start of the common era in Universal Coordinated Time (0001-01-01T00:00:00.000Z).
+  sint64 value = 1;
+}
+
+// A length of time.
+message Duration {
+  // The length of the duration, in seconds.
+  uint32 seconds = 1;
+}
