@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agave-ai4life
+  labels:
+    app: agave-ai4life
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agave-ai4life
+  template:
+    metadata:
+      labels:
+        app: agave-ai4life
+    spec:
+      containers:
+      - name: agave-ai4life-container
+        image: thewtex/agave:ai4life-2023-06-09
+        ports:
+        - containerPort: 1235
+        volumeMounts:
+        - mountPath: /app
+          name: app-volume
+        command: ["/bin/sh"]
+        args: ["-c", "/usr/local/bin/docker-entrypoint.sh &>/dev/null & pip install imjoy_rpc agave-pyclient && /bin/python3 /app/main.py"]
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+      volumes:
+      - name: app-volume
+        configMap:
+          name: agave-ai4life-python-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agave-ai4life-python-script
+data:
+  main.py: |
+    from imjoy_rpc.hypha import connect_to_server
+    import asyncio
+
+    SERVER_URL = "https://hypha.imjoy.io"
+
+    import base64
+
+    from imjoy_rpc import api
+
+    import agave_pyclient as agave
+
+    class Renderer():
+        async def hello(self):
+            print('here we are')
+            # api.log('yo we are here')
+
+        async def setup(self):
+            self.r = agave.AgaveRenderer()
+            # api.log('plugin initialized')
+
+        async def run(self, ctx):
+            r = self.r
+            # r.load_data("/home/matt/data/aneurism.ome.tif", 0, 0, 0, [0], [0, 256, 0, 256, 0, 256])
+            r.load_data("/agavedata/aneurism.ome.tif", 0, 0, 0, [0], [0, 256, 0, 256, 0, 256])
+            r.set_resolution(1075, 941)
+            r.background_color(0, 0, 0)
+            r.show_bounding_box(1)
+            r.bounding_box_color(1, 1, 1)
+
+        async def render(self, density=26.0877):
+            r = self.r
+            r.render_iterations(32)
+            r.set_primary_ray_step_size(1)
+            r.set_secondary_ray_step_size(4)
+            r.set_voxel_scale(1, 1, 1)
+            r.set_clip_region(0, 1, 0, 1, 0, 1)
+            r.eye(-0.747528, -0.570641, 0.754992)
+            r.target(0.5, 0.5, 0.5)
+            r.up(-0.505762, 0.408327, -0.759916)
+            r.camera_projection(0, 55)
+            r.exposure(0.75)
+            r.density(density)
+            r.aperture(0)
+            r.focaldist(0.75)
+            r.enable_channel(0, 1)
+            r.mat_diffuse(0, 1, 0.0470588, 0.0627451, 1)
+            r.mat_specular(0, 0, 0, 0, 0)
+            r.mat_emissive(0, 0, 0, 0, 0)
+            r.mat_glossiness(0, 70.7071)
+            r.mat_opacity(0, 1)
+            r.set_percentile_threshold(0, 0.9491, 1)
+            r.skylight_top_color(1, 1, 1)
+            r.skylight_middle_color(1, 1, 1)
+            r.skylight_bottom_color(1, 1, 1)
+            r.light_pos(0, 10, 0, 1.5708)
+            r.light_color(0, 100, 100, 100)
+            r.light_size(0, 1, 1)
+            # r.session("aneurism.ome.tif.png")
+            fn = "aneurism-remote.ome.tif.png"
+            r.session(fn)
+            r.redraw()
+            with open(fn, "rb") as fp:
+                png_string = base64.b64encode(fp.read())
+                return png_string.decode()
+
+    renderer = Renderer()
+
+    async def start_renderer():
+        server = await connect_to_server(
+            {"name": "agave-ai4life", "server_url": SERVER_URL}
+        )
+        print(server.config)
+
+        # def chat(request, context=None):
+            # print(f"getting request from {context['user']}")
+
+            # return 'print("hello world")'
+
+
+        await server.register_service({
+            "name": "AI4Life Hackathon Renderer",
+            "id": "agave-ai4life",
+            "config": {
+                "visibility": "public",
+                "require_context": False,
+                "run_in_executor": False,
+            },
+            "setup": renderer.setup,
+            "run": renderer.run,
+            "render": renderer.render,
+            "hello": renderer.hello,
+        })
+        print("Renderer is ready to receive request!",  server.config)
+
+    server_url = "https://hypha.imjoy.io"
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(start_renderer())
+    loop.run_forever()

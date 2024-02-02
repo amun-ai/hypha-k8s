@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-ai4life
+  labels:
+    app: k8s-ai4life
+spec:
+  
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-ai4life
+  template:
+    metadata:
+      labels:
+        app: k8s-ai4life
+    spec:
+      serviceAccountName: hypha-service-account
+      containers:
+        - name: k8s-ai4life-container
+          image: python:3.9
+          volumeMounts:
+            - mountPath: /app
+              name: app-volume
+          command: ["/bin/sh"]
+          # args: ["-c", "sleep 100000"]
+          args: ["-c", "pip install imjoy-rpc kubernetes && python /app/main.py"]
+      volumes:
+        - name: app-volume
+          configMap:
+            name: k8s-ai4life-python-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-ai4life-python-script
+data:
+  main.py: |
+    from imjoy_rpc.hypha import connect_to_server
+    import asyncio
+
+    SERVER_URL = "https://hypha.imjoy.io"
+
+    import kubernetes
+    from kubernetes import client, config, watch
+    from kubernetes.client.models import V1Pod, V1ObjectMeta, V1PodSpec, V1Container
+
+
+    async def start_bot():
+        config.load_incluster_config()
+        server = await connect_to_server(
+            {"name":"kubernetes-launcher", "server_url": SERVER_URL}
+            )
+        print(server.config)
+
+        async def start_pod(context=None):
+            v1 = client.CoreV1Api()
+            pod = V1Pod()
+            pod.metadata = V1ObjectMeta(name="test")
+            pod.spec = V1PodSpec(
+                containers=[
+                    V1Container(
+                        name="test",
+                        image="python:3.9",
+                        command=["/bin/sh"],
+                        args=["-c", "sleep 100000"]
+                    )
+                ]
+            )
+            v1.create_namespaced_pod(namespace="hypha", body=pod)
+            return "ok"
+
+        async def get_pods(context=None):
+            v1 = client.CoreV1Api()
+            ret = v1.list_pod_for_all_namespaces(watch=False)
+            return str(ret)
+
+        async def launch(docker_image, command, context=None):
+            return client.containers.run(docker_image, command)
+
+        await server.register_service({
+            "name": "kubernetes-launcher",
+            "id": "kubernetes-launcher",
+            "config": {
+                "visibility": "public",
+                "require_context": True,
+                "run_in_executor": True,
+            },
+            "get_pods": get_pods,
+            "start_pod": start_pod,
+        })
+        print("Code bot is ready to receive request!", server.config)
+
+    server_url = "https://hypha.imjoy.io"
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(start_bot())
+    loop.run_forever()
